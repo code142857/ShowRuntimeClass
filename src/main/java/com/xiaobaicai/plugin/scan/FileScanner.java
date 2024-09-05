@@ -1,24 +1,25 @@
 package com.xiaobaicai.plugin.scan;
 
 import com.google.common.collect.Lists;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.module.ModuleUtil;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
+import com.intellij.psi.search.FileTypeIndex;
+import com.intellij.psi.search.GlobalSearchScope;
 import com.sun.tools.attach.VirtualMachine;
 import com.sun.tools.attach.VirtualMachineDescriptor;
 import com.xiaobaicai.plugin.model.ClassInfoModel;
 import com.xiaobaicai.plugin.model.MatchedVmModel;
 import lombok.Getter;
 
-import java.io.File;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -29,137 +30,57 @@ import java.util.stream.Collectors;
 @Getter
 public class FileScanner {
 
-    public static FileScanner INSTANCE = new FileScanner();
+	public static FileScanner INSTANCE = new FileScanner();
 
-    private List<ClassInfoModel> mainClasses = Lists.newArrayList();
+	private List<ClassInfoModel> mainClasses = Lists.newArrayList();
 
-    private List<ClassInfoModel> allClasses = Lists.newArrayList();
+	private List<ClassInfoModel> allClasses = Lists.newArrayList();
 
-    private List<String> classNames = Lists.newArrayList();
+	private List<String> classNames = Lists.newArrayList();
 
+	private static boolean isMainMethod(PsiMethod method) {
+		return method.getName().equals("main") && method.hasModifierProperty(PsiModifier.STATIC)
+				&& Objects.equals(method.getReturnType(), PsiType.VOID)
+				&& method.getParameterList().getParametersCount() == 1
+				&& method.getParameterList().getParameters()[0].getType().equalsToText("java.lang.String[]");
+	}
 
-    public List<MatchedVmModel> compare(Project project) {
-        // 扫描 mainClass
-        List<ClassInfoModel> mainClasses = scan(project);
-        // 查找进程
-        List<VirtualMachineDescriptor> list = VirtualMachine.list();
-        // 匹配
-        return Optional.ofNullable(mainClasses).orElse(Collections.emptyList()).stream().map(mainClass -> {
-            MatchedVmModel vmModel = new MatchedVmModel();
-            vmModel.setMainClass(mainClass.getClassName());
-            vmModel.setRunning(0);
-            vmModel.setModuleName(mainClass.getModuleName());
-            VirtualMachineDescriptor matchedVm = list.stream().filter(vm -> vm.displayName().equals(mainClass.getClassName())).findFirst().orElse(null);
-            if (matchedVm != null) {
-                vmModel.setRunning(1);
-                vmModel.setPid(matchedVm.id());
-            }
-            return vmModel;
-        }).filter(vm -> vm.getRunning() == 1).collect(Collectors.toList());
-    }
+	public List<MatchedVmModel> compare(Project project) {
+		ModuleManager moduleManager = ModuleManager.getInstance(project);
+		Module[] modules = moduleManager.getModules();
+		for (Module module : modules) {
+			String moduleDirPath = ModuleUtil.getModuleDirPath(module);
+			System.out.println(module.getName() + "\t" + module.getModuleFilePath() + "\t" + moduleDirPath);
+		}
+		Collection<VirtualFile> javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE,
+				GlobalSearchScope.projectScope(project));
+		List<PsiFile> mainMethodFiles = new ArrayList<>();
 
+		for (VirtualFile file : javaFiles) {
+			PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
+			if (psiFile instanceof PsiJavaFile javaFile) {
+				PsiClass[] classes = javaFile.getClasses();
+				for (PsiClass psiClass : classes) {
+					PsiMethod[] methods = psiClass.getMethods();
+					for (PsiMethod method : methods) {
+						if (isMainMethod(method)) {
+							mainMethodFiles.add(javaFile);
+							break;
+						}
+					}
+				}
+			}
+		}
 
-    private List<ClassInfoModel> scan(Project project) {
-        ModuleManager moduleManager = ModuleManager.getInstance(project);
-        PsiManager psiManager = PsiManager.getInstance(project);
-        Module[] modules = moduleManager.getModules();
-        if (modules != null && modules.length == 1) {
-            Module module = modules[0];
-            String dirPath = ModuleUtil.getModuleDirPath(module);
-            if (dirPath != null) {
-                File file = new File(dirPath);
-                this.scanFile(file, psiManager, module);
-            }
-        } else {
-            for (Module module : modules) {
-                if (!module.getName().equals(project.getName())) {
-                    String dirPath = ModuleUtil.getModuleDirPath(module);
-                    if (dirPath != null) {
-                        File file = new File(dirPath);
-                        this.scanFile(file, psiManager, module);
-                    }
-                }
-            }
-        }
-        return mainClasses;
-    }
-
-    private void scanFile(File file, PsiManager psiManager, Module module) {
-        if (file == null) {
-            return;
-        }
-        if (!file.isDirectory()) {
-            if (file.getName().endsWith(".java")) {
-                VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByPath(file.getAbsolutePath());
-                PsiJavaFile javaFile = (PsiJavaFile) psiManager.findFile(virtualFile);
-                String className = javaFile.getPackageName() + "." + javaFile.getName().replace(".java", "");
-                ClassInfoModel infoModel = new ClassInfoModel();
-                infoModel.setClassName(className);
-                infoModel.setModuleName(module.getName());
-                if (hasMainMethod(javaFile)) {
-                    if (!classNames.contains(className)) {
-                        mainClasses.add(infoModel);
-                    }
-                    for (ClassInfoModel clazz : mainClasses) {
-                        if (clazz.getClassName().equals(className)) {
-                            clazz.setModuleName(module.getName());
-                        }
-                    }
-                }
-                classNames.add(className);
-                allClasses.add(infoModel);
-            }
-            return;
-        }
-
-        File[] files = file.listFiles();
-        for (File targetFile : files) {
-            scanFile(targetFile, psiManager, module);
-        }
-    }
-
-    /**
-     * 是否含有main方法
-     **/
-    private boolean hasMainMethod(PsiJavaFile javaFile) {
-        while (true) {
-            if (ProjectManager.getInstance().getDefaultProject().isInitialized()) {
-                break;
-            }
-        }
-
-        PsiClass[] classes = javaFile.getClasses();
-        for (PsiClass psiClass : classes) {
-            PsiMethod[] methods = psiClass.findMethodsByName("main", false);
-            for (PsiMethod method : methods) {
-                if (isMainMethod(method)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private boolean isMainMethod(PsiMethod method) {
-        if (!method.hasModifierProperty(PsiModifier.PUBLIC)) {
-            return false;
-        }
-        if (!method.hasModifierProperty(PsiModifier.STATIC)) {
-            return false;
-        }
-        if (!PsiType.VOID.equals(method.getReturnType())) {
-            return false;
-        }
-        PsiParameterList parameterList = method.getParameterList();
-        PsiParameter[] parameters = parameterList.getParameters();
-        if (parameters.length != 1) {
-            return false;
-        }
-        PsiType parameterType = parameters[0].getType();
-        if (!(parameterType instanceof PsiArrayType)) {
-            return false;
-        }
-        return "String[]".equals(parameterType.getPresentableText());
-    }
+		List<VirtualMachineDescriptor> list = VirtualMachine.list();
+		return list.stream().map(virtualMachineDescriptor -> {
+			MatchedVmModel vmModel = new MatchedVmModel();
+			vmModel.setMainClass(virtualMachineDescriptor.displayName());
+			vmModel.setModuleName(virtualMachineDescriptor.displayName());
+			vmModel.setRunning(1);
+			vmModel.setPid(virtualMachineDescriptor.id());
+			return vmModel;
+		}).filter(vm -> vm.getRunning() == 1).collect(Collectors.toList());
+	}
 
 }

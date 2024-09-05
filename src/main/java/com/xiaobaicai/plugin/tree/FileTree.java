@@ -44,8 +44,10 @@ public class FileTree extends Tree {
     private JProgressBar progressBar;
     // 显示进度条的对话框
     private JDialog progressDialog;
+    private Project project;
 
     public FileTree(Project project, EditorEx editor, Consumer<String> treeChangeCallback) {
+        this.project = project;
         this.editor = editor;
         this.treeChangeCallback = treeChangeCallback;
 
@@ -198,6 +200,34 @@ public class FileTree extends Tree {
             TreePath path = new TreePath(curNode.getPath());
             this.setSelectionPath(path);
             this.repaint();
+
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                try {
+                    DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode) getLastSelectedPathComponent();
+                    boolean isLeafNode = (selectedNode != null && selectedNode.getChildCount() == 0);
+                    if (!isLeafNode || selectedNode.isRoot()) {
+                        return;
+                    }
+                    String fullClassName = getSelectedFullClassName(selectedNode);
+                    String classFilePath = PluginUtils.retransformClassRemotely(getPort(), fullClassName);
+                    if (classFilePath == null && nodePathMap.containsKey(fullClassName)) {
+                        classFilePath = nodePathMap.get(fullClassName);
+                    }
+                    if (classFilePath != null) {
+                        System.out.println(classFilePath + " selected.");
+                        PluginUtils.updateEditorContent(classFilePath, editor, project);
+                        nodePathMap.put(fullClassName, classFilePath);
+                    }
+                } catch (Throwable ex) {
+                    PluginUtils.handleError(ex);
+                    return;
+                }
+                // 在 UI 线程中隐藏进度条
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    progressBar.setIndeterminate(false);
+                    progressDialog.setVisible(false);
+                });
+            });
         }
     }
 

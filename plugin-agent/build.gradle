@@ -1,11 +1,11 @@
 plugins {
     id 'java'
-    id "com.github.johnrengelman.shadow" version "6.1.0"
+    id "com.github.johnrengelman.shadow" version "8.1.1"
 }
 
 group 'com.xiaobaicai.plugin'
 version "$rootProject.ext.plugin.version"
-sourceCompatibility = 1.8
+//sourceCompatibility = 21
 
 repositories {
     mavenCentral()
@@ -27,10 +27,12 @@ shadowJar {
     }
 }
 
-// 移动agent包到plugin包下
+//// 移动agent包到plugin包下
 task packAgent(type: Copy, dependsOn: [clean, shadowJar]) {
     sourceSets.main.resources.srcDirs.each {
         from "$buildDir/libs"
         into "$buildDir/../../../$rootProject.ext.plugin.agentTargetJarModule/build/idea-sandbox/plugins/$rootProject.ext.plugin.agentTargetJarModule/lib"
     }
 }
+
+build.dependsOn shadowJar

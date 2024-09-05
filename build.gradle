@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij' version '1.3.1'
+    id 'org.jetbrains.intellij' version '1.17.1'
     id 'distribution'
 }
 
@@ -9,8 +9,14 @@ apply from: 'config.gradle'
 
 group 'com.xiaobaicai.plugin'
 version "$rootProject.ext.plugin.version"
-sourceCompatibility = 1.8
+//sourceCompatibility = 21
+//targetCompatibility = 21
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
 
 repositories {
     mavenCentral()
@@ -18,6 +24,7 @@ repositories {
 
 dependencies {
     implementation project(":plugin-core")
+    implementation project(path: ':plugin-agent', configuration: 'shadow')
     implementation rootProject.ext.dependencies["hutool-all"]
     annotationProcessor rootProject.ext.dependencies["lombok"]
     compileOnly rootProject.ext.dependencies["lombok"]
@@ -32,10 +39,11 @@ dependencies {
 
 // See https://github.com/JetBrains/gradle-intellij-plugin/
 intellij {
-    version = '2021.1.3'
+
+    version = '2024.2'
     plugins = ['java']
     type.set("IU")
-    localPath.set("/Applications/IntelliJ IDEA.app")
+//    localPath.set("/Users/jinghong/Applications/IntelliJ IDEA Ultimate.app")
     tasks {
         "buildSearchableOptions" {
             enabled = false
@@ -43,9 +51,15 @@ intellij {
     }
 }
 
+runIde {
+    jvmArgs "-javaagent:/Users/jinghong/java/ja-netfilter/ja-netfilter.jar",
+            "--add-opens=java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED",
+            "--add-opens=java.base/jdk.internal.org.objectweb.asm.tree=ALL-UNNAMED"
+}
+
 patchPluginXml {
     patchPluginXml {
-        sinceBuild.set("211.1")
+        sinceBuild.set("241.1")
         untilBuild.set("")
     }
 }
@@ -72,7 +86,13 @@ allprojects {
 
     apply plugin: 'idea'
     apply plugin: 'java'
-    sourceCompatibility = 1.8
+    // sourceCompatibility = 21
+//    targetCompatibility = 21
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
 }
 
 //所有子项目的通用配置
@@ -109,7 +129,7 @@ tasks.withType(Javadoc) {
     options.encoding = 'UTF-8'
 }
 
-task packAllTwice() {
-    dependsOn(':plugin-agent:packAgent')
-    dependsOn(':assemble')
-}
+//task packAllTwice() {
+//    dependsOn(':plugin-agent:packAgent')
+//    dependsOn(':assemble')
+//}

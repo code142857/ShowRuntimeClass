@@ -8,6 +8,8 @@ import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.impl.DocumentImpl;
+import com.intellij.openapi.fileTypes.FileType;
+import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.ui.TextFieldWithAutoCompletion;
@@ -101,6 +103,7 @@ public class ShowRuntimeClassPage {
         EditorFactory editorFactory = EditorFactory.getInstance();
         DocumentImpl document = new DocumentImpl("");
         EditorEx editor = (EditorEx) editorFactory.createEditor(document, project);
+
         JBScrollPane scrollPane = new JBScrollPane(editor.getComponent());
         fileTree = new FileTree(project, editor, newShowName -> {
             showNames.add(newShowName.replace("/", "."));

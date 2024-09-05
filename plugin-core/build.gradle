@@ -4,10 +4,16 @@ plugins {
 
 group 'com.xiaobaicai.plugin'
 version '1.0'
-
+//sourceCompatibility = 21
 repositories {
     mavenCentral()
 }
+
+//java {
+//    toolchain {
+//        languageVersion = JavaLanguageVersion.of(21)
+//    }
+//}
 
 dependencies {
 }
